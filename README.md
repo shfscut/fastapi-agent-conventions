@@ -51,3 +51,7 @@ docs/conventions/
 
 - 使用统一 envelope `{code, message, data}`。业界大项目多数直接返回资源，这里为了对齐团队前端和网关的约定而采用 envelope。
 - 删除接口返回 200 + `data: null`，而不是 204，因为 204 不能带 body。
+
+## License
+
+[MIT](LICENSE)

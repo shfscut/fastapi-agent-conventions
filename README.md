@@ -13,6 +13,7 @@ docs/conventions/
   database.md                  # SQLAlchemy 2.0 async、事务边界、repository、Alembic 审阅清单
   testing.md                   # testcontainers + 事务回滚、AsyncClient、dependency_overrides
   tooling.md                   # uv / ruff / mypy strict / CI 配置
+  config.md                    # 12-Factor 配置：.env / .env.example / .envrc / .vscode
 ```
 
 ## 使用方式
@@ -36,6 +37,7 @@ docs/conventions/
 | 可观测性 | structlog JSON + request_id + OpenTelemetry，日志禁止出现敏感信息 |
 | 测试 | 真实 PostgreSQL + 每个测试事务回滚，覆盖率 ≥ 80% |
 | 工具 | uv、ruff、mypy strict + pydantic 插件 |
+| 配置 | 12-Factor，环境变量注入；`.env` 不提交，`.env.example` + `.envrc` + `.vscode/` 提交 |
 
 ## 设计依据
 
@@ -45,6 +47,7 @@ docs/conventions/
 - [fastapi/full-stack-fastapi-template](https://github.com/fastapi/full-stack-fastapi-template)：`Annotated` 依赖别名、工具链
 - [polarsource/polar](https://github.com/polarsource/polar)：强制 repository 层、事务边界、`lazy="raise"`，以及 AGENTS.md 的写法
 - [FastAPI 官方文档](https://fastapi.tiangolo.com/) 与 release notes：async 规则、yield 依赖的 `scope`
+- [The Twelve-Factor App · Config](https://12factor.net/zh_cn/config)：配置与代码分离、环境变量注入
 - [Claude Code memory 最佳实践](https://code.claude.com/docs/en/memory)、[agents.md](https://agents.md)：篇幅控制、只写 agent 推断不出的内容
 
 和上述资料的主要差异：

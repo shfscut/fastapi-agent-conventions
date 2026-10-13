@@ -6,6 +6,7 @@ FastAPI + Pydantic v2 后端微服务。全异步，Python ≥ 3.12，SQLAlchemy
 ## 常用命令
 
 ```bash
+cp .env.example .env && direnv allow                 # 首次初始化本地配置
 uv sync                                              # 安装依赖（依据 uv.lock）
 uv run uvicorn app.main:app --reload                 # 本地启动
 uv run ruff check --fix . && uv run ruff format .    # lint + format
@@ -56,6 +57,16 @@ tests/<domain>/
 - 命名：`XxxBase` → `XxxCreate` / `XxxUpdate` / `XxxRead`。`Update` 的字段全部可选，默认值为 `None`，更新时用 `model_dump(exclude_unset=True)`。
 - ORM 模型和 schema 必须分开，不使用 SQLModel。
 - 配置用 `pydantic-settings`，按 domain 拆分各自的 `BaseSettings`，全部从环境变量读取。禁止在代码里硬编码配置值和 secret。
+
+## 配置与本地环境
+
+→ 详见 `docs/conventions/config.md`
+
+- 遵循 12-Factor：配置只通过环境变量注入。本地值放在根目录的 `.env`，由 direnv（`.envrc`）和 VS Code 自动加载。
+- `Settings` 不设置 `env_file`，代码里也不调用 `load_dotenv()`。
+- 新增配置项时，同一个提交里要同时更新 `Settings`、`.env.example`（敏感值留空）和部署配置。
+- **禁止读取、输出或提交 `.env`**。想知道有哪些配置项，看 `.env.example` 和 `Settings`。
+- 服务自己用的 LLM 密钥不要命名为 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 这类名字，改用 `LLM_API_KEY` 等带前缀的名字，避免覆盖 agent CLI 自身的认证。
 
 ## 数据库
 

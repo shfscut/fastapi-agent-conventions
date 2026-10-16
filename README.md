@@ -14,6 +14,7 @@ docs/conventions/
   testing.md                   # testcontainers + 事务回滚、AsyncClient、dependency_overrides
   tooling.md                   # uv / ruff / mypy strict / CI 配置
   config.md                    # 12-Factor 配置：.env / .env.example / .envrc / .vscode
+  domain-docs.md               # CONTEXT.md 术语表、ADR 模板与写作规则
 ```
 
 ## 使用方式

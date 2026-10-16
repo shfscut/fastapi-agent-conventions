@@ -7,6 +7,9 @@
 ```
 AGENTS.md                      # 主规范（≤ 200 行）：规则、命令、分层边界
 CLAUDE.md                      # 只有一行 @AGENTS.md，让 Claude Code 复用同一份内容
+.claude/
+  settings.json                # 注册 PreToolUse hook
+  hooks/guard.py               # 强制拦截：.env 访问、pip install、push 到 main
 docs/conventions/
   api-response.md              # {code, message, data} 统一响应、分页、router/依赖写法
   errors.md                    # AppError、错误码号段、全局 exception handler
@@ -19,11 +22,22 @@ docs/conventions/
 
 ## 使用方式
 
-把 `AGENTS.md`、`CLAUDE.md` 和 `docs/conventions/` 复制到服务仓库的根目录，然后按项目实际情况调整：
+把 `AGENTS.md`、`CLAUDE.md`、`.claude/` 和 `docs/conventions/` 复制到服务仓库的根目录，并把 `.gitignore` 末尾的 Claude Code 本地配置几行合并进去，然后按项目实际情况调整：
 
 1. 把示例 domain `order` 换成你自己的 domain，并更新 `errors.md` 中的号段分配表。
 2. 如果项目用了具体的任务队列、认证方案或 APM，在 AGENTS.md 对应的章节补一行说明。
 3. 删掉项目用不到的章节。对每一行都问一句："删掉它，agent 会犯错吗？"
+
+## 维护规则
+
+参考 [A CLAUDE.md that follows](https://academy.claude.com/courses/claude-code-in-action/a-claude-md-that-follows)：文件越精简，agent 遵守得越多。
+
+- **先判断该放哪**。必须 100% 遵守的硬性禁令放进 `.claude/hooks/guard.py`；能用 lint 检查的放进 ruff / mypy 配置（见 `tooling.md`）；AGENTS.md 只放需要判断力的约定。
+- **写成可检查的规则**。写具体路径、函数名、命令，不写"遵循最佳实践"。禁止某件事时同时写出替代做法，例如"`.dict()` → `.model_dump()`"。
+- **加粗是预算**。AGENTS.md 只给 2～3 条违反代价最大的规则加粗（目前是事务 commit、迁移审阅、日志 PII），其余保持普通语气。
+- **`docs/conventions/` 用"→ 详见"引用，不用 `@` 导入**。`@` 导入会在启动时全部展开进上下文，起不到减负作用；"→ 详见"让 agent 按需读取。
+- **agent 犯错就是规则的 bug**。遇到 agent 做错事，直接对它说"把这条加到 AGENTS.md"，并顺手删掉说不出理由的旧规则。
+- **个人或分支专属的上下文放 `CLAUDE.local.md`**（已 gitignore），例如自己分支上的重构决策，不要写进共享的 AGENTS.md。
 
 ## 核心约定速览
 

@@ -18,6 +18,7 @@ uv run alembic upgrade head                          # 应用迁移
 ```
 
 提交前 ruff、mypy、pytest 三项必须全部通过。工具配置见 `docs/conventions/tooling.md`，能用工具检查的规则不在本文件重复。
+`.env` 访问、`pip install`、push 到 main 由 `.claude/hooks/guard.py` 在 Claude Code 中直接拦截。
 
 ## 目录结构与分层
 
@@ -39,20 +40,20 @@ tests/<domain>/
 ```
 
 - 调用方向只能是 `router → service → repository`，禁止反向调用或跨层调用。
-- **所有数据库查询都必须写在 `repository.py`**。router 和 service 不能出现 `select()` 或 `session.execute()`。
+- 所有数据库查询都写在 `repository.py`，router 和 service 调用 repository 方法，不出现 `select()` 或 `session.execute()`（ruff `TID251` 兜底）。
 - router 不写业务逻辑；service 不感知 HTTP，不 import `fastapi`，也不抛 `HTTPException`。
 - 跨 domain 调用时以模块形式导入并起别名：`from app.user import service as user_service`，只能调用对方的 service。
 
 ## 异步
 
 - 路由、依赖、service、repository 一律用 `async def`。
-- `async def` 中禁止任何阻塞调用：`requests`、`time.sleep`、同步 DB driver、同步文件大读写等。HTTP 客户端用 `httpx.AsyncClient`。
-- 不得不调用同步 SDK 时，用 `await run_in_threadpool(fn, ...)` 包起来。
+- `async def` 中用异步替代品：`requests` → `httpx.AsyncClient`，`time.sleep` → `asyncio.sleep`，同步 DB driver → `asyncpg`。
+- 不得不调用同步 SDK 或同步文件 IO 时，用 `await run_in_threadpool(fn, ...)` 包起来。
 - CPU 密集型工作交给任务队列，不要放在请求里执行。
 
 ## Pydantic v2
 
-- 只用 v2 API：`model_validate`、`model_dump`、`ConfigDict`、`field_validator`、`model_validator`。禁止使用 `.dict()`、`.from_orm()`、`class Config`、`@validator`。
+- 只用 v2 API：`.dict()` → `.model_dump()`，`.from_orm()` → `.model_validate()`，`class Config` → `model_config = ConfigDict(...)`，`@validator` / `@root_validator` → `@field_validator` / `@model_validator`。
 - 所有 schema 都继承 `app.core.schemas.BaseSchema`，该基类已设置 `from_attributes=True`。
 - 命名：`XxxBase` → `XxxCreate` / `XxxUpdate` / `XxxRead`。`Update` 的字段全部可选，默认值为 `None`，更新时用 `model_dump(exclude_unset=True)`。
 - ORM 模型和 schema 必须分开，不使用 SQLModel。
@@ -65,7 +66,7 @@ tests/<domain>/
 - 遵循 12-Factor：配置只通过环境变量注入。本地值放在根目录的 `.env`，由 direnv（`.envrc`）和 VS Code 自动加载。
 - `Settings` 不设置 `env_file`，代码里也不调用 `load_dotenv()`。
 - 新增配置项时，同一个提交里要同时更新 `Settings`、`.env.example`（敏感值留空）和部署配置。
-- **禁止读取、输出或提交 `.env`**。想知道有哪些配置项，看 `.env.example` 和 `Settings`。
+- 不读取、输出或提交 `.env`。想知道有哪些配置项，看 `.env.example` 和 `Settings`。
 - 服务自己用的 LLM 密钥不要命名为 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 这类名字，改用 `LLM_API_KEY` 等带前缀的名字，避免覆盖 agent CLI 自身的认证。
 
 ## 数据库
@@ -86,7 +87,7 @@ tests/<domain>/
 - 资源名用复数 + kebab-case；JSON 字段用 snake_case。
 - 所有业务接口的响应都是 `ApiResponse[T]`，结构为 `{code, message, data}`，成功时 `code=0`。
 - 分页接口返回 `ApiResponse[Page[T]]`，其中 `data` 为 `{items, total, page, size}`。分页参数统一用 `PageParams` 依赖：`page` 从 1 开始，`size` 默认 20，最大 100。
-- 用返回类型注解声明响应模型，例如 `-> ApiResponse[OrderRead]`。router 里用 `ok(OrderRead.model_validate(obj))` **显式转换** ORM 对象，不要把 ORM 对象直接塞进 `data`。
+- 用返回类型注解声明响应模型，例如 `-> ApiResponse[OrderRead]`。router 里用 `ok(OrderRead.model_validate(obj))` 显式转换 ORM 对象，不要把 ORM 对象直接塞进 `data`。
 - HTTP 状态码保持语义：创建返回 201，删除返回 200 + `data: null`，其余情况对照错误码表。不要一律返回 200。
 - 依赖统一用 `Annotated` 别名，例如 `SessionDep`、`CurrentUser`、`OrderServiceDep`，不要在参数里直接写 `= Depends(...)`。
 - 需要"按 id 取实体，不存在就 404"时，写成可复用的依赖，放在 `dependencies.py`。
@@ -97,7 +98,7 @@ tests/<domain>/
 → 详见 `docs/conventions/errors.md`
 
 - 业务错误一律 `raise` 某个 domain 的 `AppError` 子类。每个子类要声明 `status_code`、`code`、`message`。
-- 错误码是 5 位整数：`0` 表示成功，`10xxx` 为框架通用码，每个 domain 分配一个 1000 大小的号段，分配表维护在 `app/core/exceptions.py`。**禁止在代码里直接写数字错误码。**
+- 错误码是 5 位整数：`0` 表示成功，`10xxx` 为框架通用码，每个 domain 分配一个 1000 大小的号段，分配表维护在 `app/core/exceptions.py`。代码里引用 `AppError` 子类或错误码常量，不直接写数字。
 - 全局 handler 会把 `AppError`、`HTTPException`、`RequestValidationError` 和未知异常统一转换成 `{code, message, data}`。
   - 422 的 `data` 为 `[{field, message}]`。
   - 500 只返回通用 message，不暴露堆栈或内部信息。
@@ -112,7 +113,7 @@ tests/<domain>/
 ## 日志与可观测性
 
 - 使用 `structlog`，输出 JSON。request_id 由 `asgi-correlation-id` 生成并自动绑定到日志；trace_id 由 OpenTelemetry 注入。
-- 禁止使用 `print`（ruff 的 T20 规则会检查）。日志用事件名加结构化字段：`log.info("order_created", order_id=order.id)`。
+- 日志用事件名加结构化字段：`log.info("order_created", order_id=order.id)`。
 - **日志中禁止出现** token、密码、密钥、完整手机号、身份证号等敏感信息或 PII。
 
 ## 测试
@@ -123,7 +124,6 @@ tests/<domain>/
 - endpoint 测试使用 `httpx.AsyncClient(transport=ASGITransport(app))`。替换依赖用 `app.dependency_overrides`，不要 monkeypatch 内部实现。
 - 外部 HTTP 和消息队列要 mock，数据库不要 mock。
 - 修复 bug 时必须附带一个能复现该问题的回归测试。
-- CI 要求覆盖率 ≥ 80%。
 
 ## 后台任务
 
@@ -134,10 +134,10 @@ tests/<domain>/
 
 - `/health`（liveness）和 `/ready`（检查 DB 等依赖）直接挂在 app 上，不带 `/{SERVICE_NAME}/v1` 前缀，也不包 `ApiResponse`。
 - 在 `ENV=prod` 时关闭 `/docs`、`/redoc`、`/openapi.json`。
-- CORS 只允许白名单来源，不要用 `allow_origins=["*"]` 同时开启 credentials。
+- CORS 的 `allow_origins` 从 `Settings.CORS_ORIGINS` 白名单读取，不写 `["*"]`。
 - 初始化 DB engine、HTTP client 等资源放在 `lifespan` 里，不要用 `@app.on_event`。
-- 依赖用 `uv add` 添加，必须提交 `uv.lock`。禁止用 `pip install`。
-- commit 信息遵循 Conventional Commits：`feat:`、`fix:`、`refactor:`、`test:`、`docs:`、`chore:`。
+- 依赖用 `uv add` 添加，必须提交 `uv.lock`。
+- commit 信息遵循 Conventional Commits：`feat:`、`fix:`、`refactor:`、`test:`、`docs:`、`chore:`。推到 feature 分支并发 MR/PR，不直接 push main。
 
 ## Agent 工作流
 
@@ -145,7 +145,7 @@ tests/<domain>/
 
 ### 先想清楚再写
 
-- 动手前先读相关 domain 的现有代码，照着现有模式写，不要自己发明新模式。
+- 动手前先读相关 domain 的现有代码，照着现有模式写；现有模式不适用时先说明原因，再引入新写法。
 - 需求有多种理解时，先列出来问清楚，不要默默挑一种；有更简单的方案就直接提出来。
 - 新增 domain、改表结构、改接口契约这类改动，动手前先给出方案，确认后再写代码。
 
@@ -162,7 +162,7 @@ tests/<domain>/
 ### 以验证为完成标准
 
 - 多步任务先列出「步骤 → 验证方式」，用测试或命令输出作为完成标准，不要以"应该可以了"收尾。
-- **修改后先跑受影响的单个测试，再跑全量测试**。
+- 修改后先跑受影响的单个测试，再跑全量测试。
 - 不要假设 lint、类型检查或测试的失败"本来就存在"，先确认是否由本次改动引起。
 
 ### 项目约定
